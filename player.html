@@ -34,6 +34,25 @@
     </style>
 </head>
 <body>
+    <script>
+        // 必须在加载 ruffle.js 之前配置
+        window.RufflePlayer = window.RufflePlayer || {};
+        window.RufflePlayer.config = {
+            allowScriptAccess: true,
+            backgroundColor: "#1a1c22",
+            unmuteOverlay: "hidden",
+            autoPlay: "auto",
+            warnOnUnsupportedContent: false,
+            logLevel: "error",
+            publicPath: "./ruffle-web/",
+            maxExecutionDuration: 60,
+            letterbox: "fullscreen",
+            upgradeToHttps: false,
+            contextMenu: "on",
+            showSwfDownload: false,
+            polyfills: false
+        };
+    </script>
     <script src="./ruffle-web/ruffle.js"></script>
     <div id="flash-container"></div>
     <script>
@@ -134,41 +153,17 @@
 
         // 注册 Service Worker 来拦截外部请求
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./worker.js')
-                    .then(registration => {
-                        console.log('✅ Service Worker registered successfully');
-                        console.log('Scope:', registration.scope);
-                    })
-                    .catch(error => {
-                        console.error('❌ Service Worker registration failed:', error);
-                    });
-            });
+            navigator.serviceWorker.register('./worker.js')
+                .then(registration => {
+                    console.log('✅ Service Worker registered successfully');
+                    console.log('Scope:', registration.scope);
+                })
+                .catch(error => {
+                    console.warn('⚠️ Service Worker registration failed (non-critical):', error.message);
+                });
         } else {
             console.warn('⚠️ Service Worker is not supported in this browser');
         }
-
-        window.RufflePlayer = window.RufflePlayer || {};
-        window.RufflePlayer.config = {
-            allowScriptAccess: true,
-            backgroundColor: "#1a1c22",
-            unmuteOverlay: "hidden",
-            autoPlay: true,
-            warnOnUnsupportedContent: false,
-            logLevel: "error",
-            publicPath: "./ruffle-web/",
-            swfURL: "./ruffle-web/ruffle.js",
-            maxExecutionTime: 60,
-            letterbox: "on",
-            upgradeToHttps: false,
-            contextMenu: "on",
-            showSwfDownload: false
-        };
-
-        const ruffle = window.RufflePlayer.newest();
-        const player = ruffle.createPlayer();
-        const container = document.getElementById("flash-container");
-        container.appendChild(player);
 
         function getGameFromUrl() {
             try {
@@ -178,7 +173,6 @@
             } catch (e) {
                 console.log('URLSearchParams not supported');
             }
-
             const queryString = window.location.search.substring(1);
             const params = queryString.split('&');
             for (let i = 0; i < params.length; i++) {
@@ -187,24 +181,38 @@
                     return decodeURIComponent(pair[1] || '');
                 }
             }
-
             return 'game1.swf';
         }
 
-        const gameName = getGameFromUrl();
-        const gamePath = `./game/${gameName}`;
+        function initPlayer() {
+            // ruffle.js 加载后，window.RufflePlayer 已被替换为 SourceAPI 实例
+            if (!window.RufflePlayer || typeof window.RufflePlayer.newest !== 'function') {
+                console.error('❌ Ruffle API not ready. window.RufflePlayer.newest is not available.');
+                return;
+            }
 
-        console.log('Loading game:', gamePath);
-        console.log('Note: External resource warnings can be ignored for standalone games');
+            const ruffle = window.RufflePlayer.newest();
+            if (!ruffle) {
+                console.error('❌ No Ruffle source registered.');
+                return;
+            }
 
-        player.load(gamePath).then(() => {
-            console.log('✅ Game loaded successfully');
+            const player = ruffle.createPlayer();
+            const container = document.getElementById("flash-container");
+            container.appendChild(player);
 
-            // 再次确保 API 已注入（双重保险）
-            ensureKongregateAPI();
-        }).catch(err => {
-            console.error('❌ Failed to load game:', err);
-        });
+            const gameName = getGameFromUrl();
+            const gamePath = `./game/${gameName}`;
+
+            console.log('Loading game:', gamePath);
+
+            player.load(gamePath).then(() => {
+                console.log('✅ Game loaded successfully');
+                ensureKongregateAPI();
+            }).catch(err => {
+                console.error('❌ Failed to load game:', err);
+            });
+        }
 
         // 确保 Kongregate API 存在
         function ensureKongregateAPI() {
@@ -221,6 +229,11 @@
             }
             console.log('✅ Kongregate API verified');
         }
+
+        // 等待页面完全加载后再初始化播放器（确保 ruffle.js 的 SourceAPI 已注册）
+        window.addEventListener('load', () => {
+            setTimeout(initPlayer, 100);
+        });
     </script>
 </body>
 </html>
