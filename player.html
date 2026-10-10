@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <title>Flash Game</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎮</text></svg>">
     <style>
-        /* ----------------------- 基础布局 ----------------------- */
         body {
             background-color: #1a1c22;
             margin: 0;
@@ -13,20 +13,17 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            overflow: auto;
+            overflow: hidden;
         }
 
-        /* ----------------------- 响应式容器 ----------------------- */
         #flash-container {
-            width: 90vw;
-            max-width: 1200px;
-            height: 0;
-            padding-bottom: 50%;
+            /* 根据视口宽高自适应，保持 4:3 宽高比 */
+            width: min(95vw, calc(95vh * 4 / 3));
+            height: min(95vh, calc(95vw * 3 / 4));
             position: relative;
-            box-shadow: 0 0 0px rgba(0,0,0,0.5);
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
 
-        /* ----------------------- 播放器填充容器 ----------------------- */
         #flash-container > ruffle-player {
             position: absolute;
             top: 0;
@@ -34,28 +31,146 @@
             width: 100%;
             height: 100%;
         }
-
-        /* ----------------------- 媒体查询 (针对手机和平板) ----------------------- */
-        @media (max-width: 768px) {
-            #flash-container {
-                width: 95vw;
-                padding-bottom: 75%;
-            }
-        }
     </style>
 </head>
 <body>
-    <script src="https://cdn.jsdelivr.net/npm/@ruffle-rs/ruffle"></script>
+    <script src="./ruffle-web/ruffle.js"></script>
     <div id="flash-container"></div>
     <script>
+        // 预定义全局对象，防止游戏访问未定义的属性
+        // 必须在加载游戏之前定义
+        window.kongregate_services = {
+            stats: {
+                submit: function(name, value) {
+                    console.log('[Mock Stats] Submitted:', name, '=', value);
+                },
+                request: function(callback) {
+                    if (typeof callback === 'function') {
+                        callback({});
+                    }
+                },
+                reset: function() {
+                    console.log('[Mock Stats] Reset');
+                }
+            },
+            achievements: {
+                register: function(id, name, description) {
+                    console.log('[Mock Achievements] Registered:', id, name);
+                },
+                unlock: function(id) {
+                    console.log('[Mock Achievements] Unlocked:', id);
+                },
+                list: function(callback) {
+                    if (typeof callback === 'function') {
+                        callback([]);
+                    }
+                }
+            },
+            leaderboards: {
+                postScore: function(id, score, callback) {
+                    console.log('[Mock Leaderboard] Posted score:', id, score);
+                    if (typeof callback === 'function') {
+                        callback(true);
+                    }
+                },
+                getScores: function(id, callback) {
+                    console.log('[Mock Leaderboard] Getting scores for:', id);
+                    if (typeof callback === 'function') {
+                        callback([]);
+                    }
+                }
+            },
+            chat: {
+                addListener: function(event, callback) {},
+                removeListener: function(event, callback) {},
+                sendMessage: function(msg) {}
+            },
+            gameInputs: {
+                getMouseX: function() { return 0; },
+                getMouseY: function() { return 0; },
+                getMouseDown: function() { return false; }
+            },
+            marketplace: {
+                getInventory: function(callback) {
+                    if (typeof callback === 'function') {
+                        callback([]);
+                    }
+                },
+                purchaseItem: function(id, callback) {
+                    if (typeof callback === 'function') {
+                        callback(false);
+                    }
+                }
+            },
+            metrics: {
+                submitStats: function(stats) {
+                    console.log('[Mock Metrics] Stats submitted:', stats);
+                }
+            }
+        };
+
+        // 完整的 Kongregate API 对象
+        window.kongregate = {
+            services: window.kongregate_services,
+            getState: function() {
+                return {
+                    username: 'Player',
+                    userId: 0,
+                    gameAuthToken: '',
+                    isGuest: true
+                };
+            },
+            isGuest: function() {
+                return true;
+            },
+            getGameAuthToken: function() {
+                return '';
+            }
+        };
+
+        window.KongregateAPI = window.kongregate;
+
+        console.log('✅ Kongregate API mock objects initialized');
+
+        // 注册 Service Worker 来拦截外部请求
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./worker.js')
+                    .then(registration => {
+                        console.log('✅ Service Worker registered successfully');
+                        console.log('Scope:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.error('❌ Service Worker registration failed:', error);
+                    });
+            });
+        } else {
+            console.warn('⚠️ Service Worker is not supported in this browser');
+        }
+
+        window.RufflePlayer = window.RufflePlayer || {};
+        window.RufflePlayer.config = {
+            allowScriptAccess: true,
+            backgroundColor: "#1a1c22",
+            unmuteOverlay: "hidden",
+            autoPlay: true,
+            warnOnUnsupportedContent: false,
+            logLevel: "error",
+            publicPath: "./ruffle-web/",
+            swfURL: "./ruffle-web/ruffle.js",
+            maxExecutionTime: 60,
+            letterbox: "on",
+            upgradeToHttps: false,
+            contextMenu: "on",
+            showSwfDownload: false
+        };
+
         const ruffle = window.RufflePlayer.newest();
         const player = ruffle.createPlayer();
         const container = document.getElementById("flash-container");
         container.appendChild(player);
 
-        // 从URL参数中获取游戏名称（兼容本地文件协议）
         function getGameFromUrl() {
-            // 方法1: 使用 URLSearchParams
             try {
                 const urlParams = new URLSearchParams(window.location.search);
                 const game = urlParams.get('game');
@@ -64,7 +179,6 @@
                 console.log('URLSearchParams not supported');
             }
 
-            // 方法2: 手动解析URL参数（兼容性更好）
             const queryString = window.location.search.substring(1);
             const params = queryString.split('&');
             for (let i = 0; i < params.length; i++) {
@@ -74,21 +188,39 @@
                 }
             }
 
-            // 默认游戏
             return 'game1.swf';
         }
 
         const gameName = getGameFromUrl();
-
-        // 构建本地游戏文件路径
         const gamePath = `./game/${gameName}`;
 
         console.log('Loading game:', gamePath);
+        console.log('Note: External resource warnings can be ignored for standalone games');
 
-        // 加载游戏
-        player.load(gamePath).catch(err => {
-            console.error('Failed to load game:', err);
+        player.load(gamePath).then(() => {
+            console.log('✅ Game loaded successfully');
+
+            // 再次确保 API 已注入（双重保险）
+            ensureKongregateAPI();
+        }).catch(err => {
+            console.error('❌ Failed to load game:', err);
         });
+
+        // 确保 Kongregate API 存在
+        function ensureKongregateAPI() {
+            if (!window.kongregate || !window.kongregate.services) {
+                console.warn('⚠️ Kongregate API missing, re-injecting...');
+                window.kongregate = {
+                    services: window.kongregate_services || {},
+                    getState: function() {
+                        return { username: 'Player', userId: 0, gameAuthToken: '' };
+                    },
+                    isGuest: function() { return true; }
+                };
+                window.KongregateAPI = window.kongregate;
+            }
+            console.log('✅ Kongregate API verified');
+        }
     </script>
 </body>
 </html>
